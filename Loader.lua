@@ -10,19 +10,19 @@ local Camera = workspace.CurrentCamera
 local localPlayer = Players.LocalPlayer
 
 local toggles = {
-    ESP = false,
-    Skeleton = false,
-    Aimlock = false,
-    BulletFix = false,
-    DistanceLines = false,
-    SilentAim = false,
+    ESP = true,
+    Skeleton = true,
+    Aimlock = true,
+    BulletFix = true,
+    DistanceLines = true,
+    SilentAim = true,
     AutoReload = false,
     FastEquipSwap = false,
     NoSpread = false,
-    Hitmarker = false,
-    Crosshair = false,
-    SpectatorList = false,
-    PingDisplay = false,
+    Hitmarker = true,
+    Crosshair = true,
+    SpectatorList = true,
+    PingDisplay = true,
 }
 
 local keybinds = {
@@ -172,8 +172,7 @@ local function updateESP(pl, character, color)
         return
     end
 
-    local dist = (rootPart.Position - localPlayer.Character.PrimaryPart.Position).Magnitude
-    local size = 100 / math.clamp(dist, 10, 1000)
+    local size = 100 / math.clamp((rootPart.Position - localPlayer.Character.PrimaryPart.Position).Magnitude, 10, 1000)
     local half = size / 2
 
     local pos, onScreen = Camera:WorldToViewportPoint(rootPart.Position)
@@ -273,6 +272,7 @@ local function findClosestTarget()
     return bestTarget
 end
 
+-- Bullet correction hook with error handling and strict type checks
 local mt = getrawmetatable(game)
 local origNamecall = mt.__namecall
 setreadonly(mt, false)
@@ -285,12 +285,19 @@ mt.__namecall = newcclosure(function(self, ...)
 
     if toggles.BulletFix and (method == "Raycast" or method == "FindPartOnRayWithIgnoreList") then
         local target = cachedClosestTarget
-        if target then
+        if target and target.Parent then
             local origin
-            if typeof(args[1]) == "Ray" then origin = args[1].Origin
-            elseif typeof(args[1]) == "Vector3" then origin = args[1]
-            elseif args[1] and typeof(args[1]) == "table" and args[1].Origin then origin = args[1].Origin
-            else origin = nil end
+            local arg1 = args[1]
+
+            if typeof(arg1) == "Ray" then
+                origin = arg1.Origin
+            elseif typeof(arg1) == "Vector3" then
+                origin = arg1
+            elseif typeof(arg1) == "table" and arg1.Origin and typeof(arg1.Origin) == "Vector3" then
+                origin = arg1.Origin
+            else
+                origin = nil
+            end
 
             if origin then
                 local direction = (target.Position - origin).Unit * 1000
@@ -303,7 +310,7 @@ mt.__namecall = newcclosure(function(self, ...)
         end
     elseif typeof(self) == "Instance" and self:IsA("RemoteEvent") then
         local target = cachedClosestTarget
-        if target then
+        if target and target.Parent then
             for i, v in ipairs(args) do
                 if typeof(v) == "Vector3" then
                     args[i] = target.Position
@@ -473,7 +480,6 @@ local function drawCrosshair()
     end
 end
 
--- Spectator GUI setup
 local SpectatorGui = Instance.new("ScreenGui")
 SpectatorGui.Name = "NoSleepSpectatorList"
 SpectatorGui.Parent = localPlayer:WaitForChild("PlayerGui")
@@ -484,247 +490,218 @@ SpectatorLabel.BackgroundTransparency = 0.5
 SpectatorLabel.TextColor3 = Color3.new(1, 1, 1)
 SpectatorLabel.Size = UDim2.new(0, 200, 0, 100)
 SpectatorLabel.Position = UDim2.new(1, -210, 0, 10)
-SpectatorLabel.Text = "Spectators:"
-SpectatorLabel.TextWrapped = true
+SpectatorLabel.Text = "Spectators:\nNone"
 SpectatorLabel.Visible = toggles.SpectatorList
 SpectatorLabel.Parent = SpectatorGui
 
-local function updateSpectatorList()
-    local text = "Spectators:\n"
+local function updateSpectators()
+    if not toggles.SpectatorList then
+        SpectatorLabel.Visible = false
+        return
+    end
+    SpectatorLabel.Visible = true
+    local spectators = {}
     for _, pl in ipairs(Players:GetPlayers()) do
-        if pl ~= localPlayer and pl.Character and pl.Character:FindFirstChild("Humanoid") and pl.Character.Humanoid.Health > 0 then
-            local target = nil
-            local cframe = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if cframe then
-                local head = pl.Character:FindFirstChild("Head")
-                if head then
-                    -- If pl is looking at local player within some angle, count as spectator
-                    local lookVector = (head.CFrame.LookVector)
-                    local directionToLocal = (cframe.Position - head.Position).Unit
-                    local dot = lookVector:Dot(directionToLocal)
-                    if dot > 0.8 then
-                        text = text .. pl.Name .. "\n"
-                    end
+        if pl ~= localPlayer and pl.Character and pl.Character:FindFirstChild("Humanoid") then
+            local targetHumanoid = pl.Character:FindFirstChild("Humanoid")
+            local targetHumanoidRootPart = pl.Character:FindFirstChild("HumanoidRootPart")
+            if targetHumanoid and targetHumanoidRootPart then
+                -- Checking if pl is spectating localPlayer by looking for Humanoid's cameraSubject or similar methods
+                if targetHumanoid.CameraSubject and targetHumanoid.CameraSubject == localPlayer.Character.Humanoid then
+                    table.insert(spectators, pl.Name)
                 end
             end
         end
     end
-    SpectatorLabel.Text = text
+    if #spectators == 0 then
+        SpectatorLabel.Text = "Spectators:\nNone"
+    else
+        SpectatorLabel.Text = "Spectators:\n" .. table.concat(spectators, "\n")
+    end
 end
 
--- Ping display
 local PingLabel = Instance.new("TextLabel")
 PingLabel.BackgroundColor3 = Color3.new(0, 0, 0)
 PingLabel.BackgroundTransparency = 0.5
 PingLabel.TextColor3 = Color3.new(1, 1, 1)
-PingLabel.Size = UDim2.new(0, 100, 0, 25)
-PingLabel.Position = UDim2.new(0, 10, 1, -35)
-PingLabel.Text = "Ping: 0 ms"
-PingLabel.Parent = SpectatorGui
+PingLabel.Size = UDim2.new(0, 100, 0, 30)
+PingLabel.Position = UDim2.new(0, 10, 0, 10)
+PingLabel.Text = "Ping: ..."
 PingLabel.Visible = toggles.PingDisplay
+PingLabel.Parent = SpectatorGui
 
-RunService.Heartbeat:Connect(function()
-    if toggles.PingDisplay then
-        local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
-        PingLabel.Text = string.format("Ping: %d ms", ping)
-    else
+local function updatePing()
+    if not toggles.PingDisplay then
         PingLabel.Visible = false
+        return
     end
-end)
+    PingLabel.Visible = true
+    local ping = math.floor(game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue())
+    PingLabel.Text = "Ping: " .. tostring(ping) .. " ms"
+end
 
-local Window = Rayfield:CreateWindow({
+-- Create UI window and toggles using Rayfield
+
+local uiWindow = Rayfield:CreateWindow({
     Name = "NoSleep Hub",
     LoadingTitle = "NoSleep Hub",
     LoadingSubtitle = "Loading...",
     ConfigurationSaving = {
         Enabled = true,
-        FolderName = "NoSleepHubConfig",
-        FileName = "Settings"
+        FolderName = "NoSleepHubConfigs",
+        FileName = "Config",
     },
     Discord = {
-        Enabled = false,
-        Invite = "YourDiscordCode",
-        RememberJoins = true
+        Enabled = true,
+        Invite = "yourdiscordinvite",
+        RememberJoins = true,
     }
 })
 
-local tabESP = Window:CreateTab("ESP & Visuals")
-local tabAim = Window:CreateTab("Aim & Bullet")
-local tabMisc = Window:CreateTab("Misc")
-local tabSettings = Window:CreateTab("Settings")
+local function safeToggleCallback(toggleName, callback)
+    return function(value)
+        if toggles == nil then return end
+        toggles[toggleName] = value
+        if callback then
+            local ok, err = pcall(callback, value)
+            if not ok then
+                warn("[NoSleepHub] Toggle callback error: " .. tostring(err))
+            end
+        end
+    end
+end
 
-tabESP:CreateToggle({
-    Name = "Enable ESP",
+uiWindow:CreateToggle({
+    Name = "ESP",
     CurrentValue = toggles.ESP,
-    Flag = "ToggleESP",
-    Callback = function(val)
-        toggles.ESP = val
-        if not val then
-            cleanup(espBoxes)
-            cleanup(skeletons)
-            cleanup(distanceLines)
-            cleanup(healthBars)
+    Flag = "ESP_Toggle",
+    Callback = safeToggleCallback("ESP")
+})
+
+uiWindow:CreateToggle({
+    Name = "Skeleton Chams",
+    CurrentValue = toggles.Skeleton,
+    Flag = "Skeleton_Toggle",
+    Callback = safeToggleCallback("Skeleton")
+})
+
+uiWindow:CreateToggle({
+    Name = "Aimlock",
+    CurrentValue = toggles.Aimlock,
+    Flag = "Aimlock_Toggle",
+    Callback = safeToggleCallback("Aimlock")
+})
+
+uiWindow:CreateToggle({
+    Name = "Bullet Correction",
+    CurrentValue = toggles.BulletFix,
+    Flag = "BulletFix_Toggle",
+    Callback = safeToggleCallback("BulletFix")
+})
+
+uiWindow:CreateToggle({
+    Name = "Distance Lines",
+    CurrentValue = toggles.DistanceLines,
+    Flag = "DistanceLines_Toggle",
+    Callback = safeToggleCallback("DistanceLines")
+})
+
+uiWindow:CreateToggle({
+    Name = "Crosshair",
+    CurrentValue = toggles.Crosshair,
+    Flag = "Crosshair_Toggle",
+    Callback = function(value)
+        toggles.Crosshair = value
+        for _, line in ipairs(crosshairLines) do
+            line.Visible = value
         end
     end,
 })
 
-tabESP:CreateToggle({
-    Name = "Skeleton ESP",
-    CurrentValue = toggles.Skeleton,
-    Flag = "ToggleSkeleton",
-    Callback = function(val)
-        toggles.Skeleton = val
-    end,
-})
-
-tabESP:CreateToggle({
-    Name = "Distance Lines",
-    CurrentValue = toggles.DistanceLines,
-    Flag = "ToggleDistLines",
-    Callback = function(val)
-        toggles.DistanceLines = val
-    end,
-})
-
-tabESP:CreateToggle({
-    Name = "Show Health Bars",
-    CurrentValue = true,
-    Flag = "ToggleHealthBars",
-    Callback = function(val)
-    end,
-})
-
-tabAim:CreateToggle({
-    Name = "Enable Aimlock",
-    CurrentValue = toggles.Aimlock,
-    Flag = "ToggleAimlock",
-    Callback = function(val)
-        toggles.Aimlock = val
-        fovCircle.Visible = val
-        drawCrosshair()
-    end,
-})
-
-tabAim:CreateSlider({
-    Name = "Aim Smoothness",
-    Range = {0, 1},
-    Increment = 0.01,
-    CurrentValue = aimSmoothness,
-    Flag = "AimSmoothness",
-    Callback = function(val)
-        aimSmoothness = val
-    end,
-})
-
-tabAim:CreateToggle({
-    Name = "Enable Bullet Correction",
-    CurrentValue = toggles.BulletFix,
-    Flag = "ToggleBulletFix",
-    Callback = function(val)
-        toggles.BulletFix = val
-    end,
-})
-
-tabMisc:CreateToggle({
-    Name = "Show Crosshair",
-    CurrentValue = toggles.Crosshair,
-    Flag = "ToggleCrosshair",
-    Callback = function(val)
-        toggles.Crosshair = val
-        drawCrosshair()
-    end,
-})
-
-tabMisc:CreateToggle({
-    Name = "Enable Hitmarker",
-    CurrentValue = toggles.Hitmarker,
-    Flag = "ToggleHitmarker",
-    Callback = function(val)
-        toggles.Hitmarker = val
-    end,
-})
-
-tabMisc:CreateToggle({
+uiWindow:CreateToggle({
     Name = "Spectator List",
     CurrentValue = toggles.SpectatorList,
-    Flag = "ToggleSpectatorList",
-    Callback = function(val)
-        toggles.SpectatorList = val
-        SpectatorLabel.Visible = val
-    end,
+    Flag = "Spectator_Toggle",
+    Callback = safeToggleCallback("SpectatorList", function(value)
+        SpectatorLabel.Visible = value
+    end)
 })
 
-tabMisc:CreateToggle({
-    Name = "Show Ping",
+uiWindow:CreateToggle({
+    Name = "Ping Display",
     CurrentValue = toggles.PingDisplay,
-    Flag = "TogglePing",
-    Callback = function(val)
-        toggles.PingDisplay = val
-        PingLabel.Visible = val
-    end,
+    Flag = "Ping_Toggle",
+    Callback = safeToggleCallback("PingDisplay", function(value)
+        PingLabel.Visible = value
+    end)
 })
 
-tabSettings:CreateKeybind({
+uiWindow:CreateToggle({
+    Name = "Auto Reload",
+    CurrentValue = toggles.AutoReload,
+    Flag = "AutoReload_Toggle",
+    Callback = safeToggleCallback("AutoReload")
+})
+
+uiWindow:CreateToggle({
+    Name = "Fast Equip Swap",
+    CurrentValue = toggles.FastEquipSwap,
+    Flag = "FastEquipSwap_Toggle",
+    Callback = safeToggleCallback("FastEquipSwap")
+})
+
+uiWindow:CreateToggle({
+    Name = "No Spread",
+    CurrentValue = toggles.NoSpread,
+    Flag = "NoSpread_Toggle",
+    Callback = safeToggleCallback("NoSpread")
+})
+
+uiWindow:CreateToggle({
+    Name = "Hitmarker",
+    CurrentValue = toggles.Hitmarker,
+    Flag = "Hitmarker_Toggle",
+    Callback = safeToggleCallback("Hitmarker")
+})
+
+uiWindow:BindKey({
     Name = "Toggle UI",
-    CurrentKeybind = keybinds.ToggleUI.Name,
-    Flag = "KeybindToggleUI",
-    Hold = false,
-    Callback = function(key)
-        keybinds.ToggleUI = Enum.KeyCode[key]
-        Window:Toggle()
+    Default = keybinds.ToggleUI,
+    Flag = "ToggleUI_Bind",
+    Callback = function()
+        uiWindow:Toggle()
     end,
 })
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == keybinds.ToggleUI then
-        Window:Toggle()
-    end
-end)
+-- Main loop
 
 RunService.RenderStepped:Connect(function()
-    if not localPlayer.Character or not localPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-
     cachedClosestTarget = findClosestTarget()
+
     for _, pl in ipairs(Players:GetPlayers()) do
-        if pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl ~= localPlayer then
+        if pl.Character and pl.Character:FindFirstChild("HumanoidRootPart") and pl ~= localPlayer and not isWhitelisted(pl) then
             setupVisuals(pl)
             local color = playerColor(pl)
             updateESP(pl, pl.Character, color)
             updateSkeleton(pl, pl.Character, color)
             updateDistanceLine(pl, pl.Character, color)
             updateHealthBar(pl, pl.Character)
-        else
-            cleanup(espBoxes)
-            cleanup(skeletons)
-            cleanup(distanceLines)
-            cleanup(healthBars)
         end
     end
 
     aimlockUpdate()
-
-    fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-    fovCircle.Visible = toggles.Aimlock
-
-    drawCrosshair()
-
-    if toggles.SpectatorList then
-        pcall(updateSpectatorList)
-    end
-
     tryAutoReload()
-    fastEquipSwap()
     patchNoSpread()
+    fastEquipSwap()
+    drawCrosshair()
+    updateSpectators()
+    updatePing()
 end)
 
-Players.PlayerAdded:Connect(function(pl)
-    pl.CharacterAdded:Connect(function(char)
-        listenToHits(pl)
-    end)
-end)
 for _, pl in ipairs(Players:GetPlayers()) do
     listenToHits(pl)
 end
 
-print("[NoSleep Hub] Loaded successfully!")
+Players.PlayerAdded:Connect(function(pl)
+    listenToHits(pl)
+end)
