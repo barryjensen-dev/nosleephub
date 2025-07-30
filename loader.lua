@@ -25,27 +25,18 @@ if not DrawingSupported then
     return
 end
 
--- State toggles and keybind defaults
-local toggles = {
-    ESP = true,
-    Skeleton = true,
-    Aimlock = true,
-    BulletFix = true,
-    DistanceLines = true,  -- Added toggle for distance lines
-}
-
+-- Toggles and keybind settings
+local toggles = { ESP = true, Skeleton = true, Aimlock = true, BulletFix = true, DistanceLines = true }
 local keybinds = {
     ESP = Enum.KeyCode.F1,
     Skeleton = Enum.KeyCode.F2,
     Aimlock = Enum.KeyCode.F3,
     BulletFix = Enum.KeyCode.F4,
-    DistanceLines = Enum.KeyCode.F5,  -- Keybind for distance lines toggle
-    ToggleUI = Enum.KeyCode.RightControl,
+    DistanceLines = Enum.KeyCode.F5,
+    ToggleUI = Enum.KeyCode.RightControl
 }
 
-local espBoxes = {}
-local skeletons = {}
-local distanceLines = {} -- Store distance lines per player
+local espBoxes, skeletons, distanceLines = {}, {}, {}
 
 -- Friend whitelist detection
 local function isWhitelisted(pl)
@@ -62,8 +53,8 @@ local function playerColor(pl)
     end
 end
 
--- Cleanup helper
-local function cleanupDrawing(tbl)
+-- Drawing cleanup helper
+local function cleanup(tbl)
     for _, obj in pairs(tbl) do
         if obj.Visible then obj.Visible = false end
         if obj.Destroy then obj:Destroy() end
@@ -71,42 +62,34 @@ local function cleanupDrawing(tbl)
     table.clear(tbl)
 end
 
--- Setup ESP box
+-- ESP setup
 local function setupESP(pl)
-    if espBoxes[pl] then cleanupDrawing(espBoxes[pl]) end
     espBoxes[pl] = {}
     for i = 1, 4 do
         local l = Drawing.new("Line")
-        l.Thickness = 2
-        l.Transparency = 1
-        l.Visible = false
+        l.Thickness = 2 l.Transparency = 1 l.Visible = false
         table.insert(espBoxes[pl], l)
     end
 end
 
--- Setup skeleton
+-- Skeleton setup
 local function setupSkeleton(pl)
-    if skeletons[pl] then cleanupDrawing(skeletons[pl]) end
     skeletons[pl] = {}
     for i = 1, 14 do
         local l = Drawing.new("Line")
-        l.Thickness = 1
-        l.Transparency = 1
-        l.Visible = false
+        l.Thickness = 1 l.Transparency = 1 l.Visible = false
         table.insert(skeletons[pl], l)
     end
 end
 
--- Setup distance line for player
+-- Distance line setup
 local function setupDistanceLine(pl)
-    if distanceLines[pl] then cleanupDrawing(distanceLines[pl]) end
-    distanceLines[pl] = {}
     local line = Drawing.new("Line")
-    line.Thickness = 1.5
+    line.Thickness = 1
     line.Transparency = 1
-    line.Color = Color3.new(1, 1, 1) -- default white, will be overridden
+    line.Color = Color3.fromRGB(255,255,255)
     line.Visible = false
-    table.insert(distanceLines[pl], line)
+    distanceLines[pl] = line
 end
 
 local function setupCharacter(pl)
@@ -116,6 +99,7 @@ local function setupCharacter(pl)
     setupDistanceLine(pl)
 end
 
+-- Skeleton update
 local function updateSkeleton(pl, character, color)
     local lines = skeletons[pl]
     if not lines then return end
@@ -175,10 +159,7 @@ RunService.RenderStepped:Connect(function()
                 local pos, on = Camera:WorldToViewportPoint(head.Position)
                 if on then
                     local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if dist < bestDist then
-                        best = head
-                        bestDist = dist
-                    end
+                    if dist < bestDist then best, bestDist = head, dist end
                 end
             end
         end
@@ -186,14 +167,14 @@ RunService.RenderStepped:Connect(function()
     cachedClosestHead = best
 end)
 
--- Bullet correction hook using cached closest head
+-- Bullet redirection hook
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
-local origNamecall = mt.__namecall
-local inNamecall = false
+local orig = mt.__namecall
+local inCall = false
 mt.__namecall = newcclosure(function(self, ...)
-    if inNamecall then return origNamecall(self, ...) end
-    inNamecall = true
+    if inCall then return orig(self, ...) end
+    inCall = true
     local method = getnamecallmethod()
     local args = {...}
     if toggles.BulletFix then
@@ -201,52 +182,41 @@ mt.__namecall = newcclosure(function(self, ...)
             local closest = cachedClosestHead
             if closest then
                 local origin
-                if typeof(args[1]) == "Ray" then
-                    origin = args[1].Origin
-                elseif typeof(args[1]) == "Vector3" then
-                    origin = args[1]
-                elseif args[1] and args[1].Origin then
-                    origin = args[1].Origin
-                elseif args[1] and args[1].OriginPosition then
-                    origin = args[1].OriginPosition
-                end
+                if typeof(args[1]) == "Ray" then origin = args[1].Origin
+                elseif typeof(args[1]) == "Vector3" then origin = args[1]
+                elseif args[1] and args[1].Origin then origin = args[1].Origin
+                elseif args[1] and args[1].OriginPosition then origin = args[1].OriginPosition end
                 if origin then
                     local dir = (closest.Position - origin).Unit * 1000
-                    if method == "Raycast" then
-                        args[2] = dir
-                    else
-                        args[1] = Ray.new(origin, dir)
-                    end
+                    if method == "Raycast" then args[2] = dir
+                    else args[1] = Ray.new(origin, dir) end
                 end
             end
         elseif typeof(self) == "Instance" and self:IsA("RemoteEvent") then
             local closest = cachedClosestHead
             if closest then
                 for i, v in ipairs(args) do
-                    if typeof(v) == "Vector3" then
-                        args[i] = closest.Position
-                    elseif typeof(v) == "CFrame" then
-                        args[i] = CFrame.new(closest.Position)
-                    end
+                    if typeof(v) == "Vector3" then args[i] = closest.Position
+                    elseif typeof(v) == "CFrame" then args[i] = CFrame.new(closest.Position) end
                 end
             end
         end
     end
-    local result = origNamecall(self, unpack(args))
-    inNamecall = false
+    local result = orig(self, unpack(args))
+    inCall = false
     return result
 end)
 setreadonly(mt, true)
 
--- Throttle rendering to ~30 FPS
-local lastRender = 0
+-- Throttled rendering (~30 FPS)
+local last = 0
 RunService.RenderStepped:Connect(function(dt)
-    lastRender += dt
-    if lastRender < 0.033 then return end
-    lastRender = 0
+    last += dt
+    if last < 0.033 then return end
+    last = 0
+    local lp = localPlayer.Character
+    if not (lp and lp.PrimaryPart) then return end
 
-    local lpChar = localPlayer.Character
-    if not (lpChar and lpChar.PrimaryPart) then return end
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     local bestHead, bestDist = nil, math.huge
 
@@ -254,19 +224,20 @@ RunService.RenderStepped:Connect(function(dt)
         if pl ~= localPlayer and pl.Character and not isWhitelisted(pl) then
             local head = pl.Character:FindFirstChild("Head")
             if head then
-                local dist = (head.Position - lpChar.PrimaryPart.Position).Magnitude
+                local dist = (head.Position - lp.PrimaryPart.Position).Magnitude
                 if dist <= labelRenderDistance then
                     local pos, on = Camera:WorldToViewportPoint(head.Position)
                     if on then
                         local col = playerColor(pl)
-                        -- ESP boxes
+
+                        -- ESP Boxes
                         if toggles.ESP and espBoxes[pl] then
                             local size = 100 / dist
-                            local half = size / 2
-                            local tl = Vector2.new(pos.X - half, pos.Y - size)
+                            local half = size/2
+                            local tl = Vector2.new(pos.X-half, pos.Y-size)
                             local tr = tl + Vector2.new(size, 0)
-                            local bl = tl + Vector2.new(0, size * 2)
-                            local br = tr + Vector2.new(0, size * 2)
+                            local bl = tl + Vector2.new(0, size*2)
+                            local br = tr + Vector2.new(0, size*2)
                             local box = espBoxes[pl]
                             box[1].From, box[1].To = tl, tr
                             box[2].From, box[2].To = tr, br
@@ -277,32 +248,35 @@ RunService.RenderStepped:Connect(function(dt)
                                 l.Visible = true
                             end
                         end
-                        -- Skeletons
-                        if toggles.Skeleton then
-                            updateSkeleton(pl, pl.Character, col)
-                        end
+
+                        -- Skeleton
+                        if toggles.Skeleton then updateSkeleton(pl, pl.Character, col) end
+
                         -- Distance lines
                         if toggles.DistanceLines and distanceLines[pl] then
-                            local line = distanceLines[pl][1]
-                            line.From = center
-                            line.To = Vector2.new(pos.X, pos.Y)
-                            line.Color = col
-                            line.Visible = true
+                            local line = distanceLines[pl]
+                            local screenPos, onScreen = Camera:WorldToViewportPoint(pl.Character.HumanoidRootPart.Position)
+                            if onScreen then
+                                line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+                                line.To = Vector2.new(screenPos.X, screenPos.Y)
+                                line.Color = col
+                                line.Visible = true
+                            else
+                                line.Visible = false
+                            end
                         end
                     end
                 end
                 local pos, on = Camera:WorldToViewportPoint(head.Position)
                 if on then
                     local d = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                    if d < bestDist then
-                        bestHead, bestDist = head, d
-                    end
+                    if d < bestDist then bestHead, bestDist = head, d end
                 end
             end
         end
     end
 
-    -- Hide visuals for missing or whitelisted players
+    -- Hide visuals for whitelisted or missing players
     for pl, box in pairs(espBoxes) do
         if not pl.Character or isWhitelisted(pl) then
             for _, l in ipairs(box) do l.Visible = false end
@@ -313,9 +287,9 @@ RunService.RenderStepped:Connect(function(dt)
             for _, l in ipairs(lines) do l.Visible = false end
         end
     end
-    for pl, lines in pairs(distanceLines) do
+    for pl, line in pairs(distanceLines) do
         if not pl.Character or isWhitelisted(pl) then
-            for _, l in ipairs(lines) do l.Visible = false end
+            line.Visible = false
         end
     end
 
@@ -326,162 +300,141 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- Player management
+-- Player connect/disconnect handling
 Players.PlayerAdded:Connect(function(pl)
-    pl.CharacterAdded:Connect(function()
-        setupCharacter(pl)
-    end)
+    pl.CharacterAdded:Connect(function() setupCharacter(pl) end)
 end)
 Players.PlayerRemoving:Connect(function(pl)
-    cleanupDrawing(skeletons[pl] or {})
-    cleanupDrawing(espBoxes[pl] or {})
-    cleanupDrawing(distanceLines[pl] or {})
-    skeletons[pl], espBoxes[pl], distanceLines[pl] = nil, nil, nil
+    cleanup(skeletons[pl] or {})
+    cleanup(espBoxes[pl] or {})
+    if distanceLines[pl] then
+        distanceLines[pl].Visible = false
+        distanceLines[pl]:Destroy()
+        distanceLines[pl] = nil
+    end
+    skeletons[pl], espBoxes[pl] = nil, nil
 end)
-for _, pl in ipairs(Players:GetPlayers()) do
-    setupCharacter(pl)
-end
+for _, pl in ipairs(Players:GetPlayers()) do setupCharacter(pl) end
 
--- ======= Rayfield UI =======
+-- ===== Rayfield UI Integration =====
 
 local Window = Rayfield:CreateWindow({
     Name = "NoSleep Hub - ESP & Aim",
     LoadingTitle = "NoSleep Hub",
-    LoadingSubtitle = "by barryjensen-dev",
+    LoadingSubtitle = "by You",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "NoSleepHubConfig",
-        FileName = "Config",
+        FileName = "Config"
     },
-    Discord = {
-        Enabled = false,
-        Invite = "",
-        RememberJoins = true,
-    },
+    Discord = { Enabled = false, Invite = "", RememberJoins = true },
     KeySystem = false,
 })
 
+-- Visuals tab toggles
 local VisualsTab = Window:CreateTab("Visuals")
 
-VisualsTab:CreateToggle({
+local espToggleUI = VisualsTab:CreateToggle({
     Name = "ESP",
     CurrentValue = toggles.ESP,
     Flag = "ESP_Toggle",
-    Callback = function(value)
-        toggles.ESP = value
-    end,
+    Callback = function(val) toggles.ESP = val end
 })
 
-VisualsTab:CreateToggle({
+local skeletonToggleUI = VisualsTab:CreateToggle({
     Name = "Skeleton",
     CurrentValue = toggles.Skeleton,
     Flag = "Skeleton_Toggle",
-    Callback = function(value)
-        toggles.Skeleton = value
-    end,
+    Callback = function(val) toggles.Skeleton = val end
 })
 
-VisualsTab:CreateToggle({
+local aimlockToggleUI = VisualsTab:CreateToggle({
     Name = "Aimlock",
     CurrentValue = toggles.Aimlock,
     Flag = "Aimlock_Toggle",
-    Callback = function(value)
-        toggles.Aimlock = value
-    end,
+    Callback = function(val) toggles.Aimlock = val end
 })
 
-VisualsTab:CreateToggle({
+local bulletFixToggleUI = VisualsTab:CreateToggle({
     Name = "Bullet Correction",
     CurrentValue = toggles.BulletFix,
     Flag = "BulletFix_Toggle",
-    Callback = function(value)
-        toggles.BulletFix = value
-    end,
+    Callback = function(val) toggles.BulletFix = val end
 })
 
-VisualsTab:CreateToggle({
+local distanceLinesToggleUI = VisualsTab:CreateToggle({
     Name = "Distance Lines",
     CurrentValue = toggles.DistanceLines,
     Flag = "DistanceLines_Toggle",
-    Callback = function(value)
-        toggles.DistanceLines = value
-    end,
+    Callback = function(val) toggles.DistanceLines = val end
 })
 
+-- Keybinds tab
 local KeybindsTab = Window:CreateTab("Keybinds")
 
-KeybindsTab:CreateKeybind({
+local espKeybindUI = KeybindsTab:CreateKeybind({
     Name = "Toggle ESP",
     CurrentKeybind = keybinds.ESP,
     Hold = false,
     Flag = "ESP_Keybind",
-    Callback = function(key)
-        keybinds.ESP = key
-    end,
+    Callback = function(k) keybinds.ESP = k end
 })
 
-KeybindsTab:CreateKeybind({
+local skeletonKeybindUI = KeybindsTab:CreateKeybind({
     Name = "Toggle Skeleton",
     CurrentKeybind = keybinds.Skeleton,
     Hold = false,
     Flag = "Skeleton_Keybind",
-    Callback = function(key)
-        keybinds.Skeleton = key
-    end,
+    Callback = function(k) keybinds.Skeleton = k end
 })
 
-KeybindsTab:CreateKeybind({
+local aimlockKeybindUI = KeybindsTab:CreateKeybind({
     Name = "Toggle Aimlock",
     CurrentKeybind = keybinds.Aimlock,
     Hold = false,
     Flag = "Aimlock_Keybind",
-    Callback = function(key)
-        keybinds.Aimlock = key
-    end,
+    Callback = function(k) keybinds.Aimlock = k end
 })
 
-KeybindsTab:CreateKeybind({
+local bulletFixKeybindUI = KeybindsTab:CreateKeybind({
     Name = "Toggle Bullet Correction",
     CurrentKeybind = keybinds.BulletFix,
     Hold = false,
     Flag = "BulletFix_Keybind",
-    Callback = function(key)
-        keybinds.BulletFix = key
-    end,
+    Callback = function(k) keybinds.BulletFix = k end
 })
 
-KeybindsTab:CreateKeybind({
+local distanceLinesKeybindUI = KeybindsTab:CreateKeybind({
     Name = "Toggle Distance Lines",
     CurrentKeybind = keybinds.DistanceLines,
     Hold = false,
     Flag = "DistanceLines_Keybind",
-    Callback = function(key)
-        keybinds.DistanceLines = key
-    end,
+    Callback = function(k) keybinds.DistanceLines = k end
 })
 
-KeybindsTab:CreateKeybind({
+local toggleUIKeybindUI = KeybindsTab:CreateKeybind({
     Name = "Toggle UI Visibility",
     CurrentKeybind = keybinds.ToggleUI,
     Hold = false,
     Flag = "ToggleUI_Keybind",
-    Callback = function(key)
-        keybinds.ToggleUI = key
-    end,
+    Callback = function(k) keybinds.ToggleUI = k end
 })
 
--- Hotkey input handler
+-- Hotkey input handler, safe flag checks
 UserInput.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType == Enum.UserInputType.Keyboard then
-        for name, key in pairs(keybinds) do
-            if input.KeyCode == key then
-                if name == "ToggleUI" then
-                    Window:Toggle()
+    if gameProcessed or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    for name, key in pairs(keybinds) do
+        if input.KeyCode == key then
+            if name == "ToggleUI" then
+                Window:Toggle()
+            else
+                toggles[name] = not toggles[name]
+                local flagName = name .. "_Toggle"
+                local flag = Rayfield.Flags[flagName]
+                if flag then
+                    flag:Set(toggles[name])
                 else
-                    toggles[name] = not toggles[name]
-                    local flag = Rayfield.Flags[name .. "_Toggle"]
-                    if flag then flag:Set(toggles[name]) end
+                    warn("Flag not found for: " .. flagName)
                 end
             end
         end
