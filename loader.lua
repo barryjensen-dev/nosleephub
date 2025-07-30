@@ -10,19 +10,19 @@ local Camera = workspace.CurrentCamera
 local localPlayer = Players.LocalPlayer
 
 local toggles = {
-    ESP = true,
-    Skeleton = true,
-    Aimlock = true,
-    BulletFix = true,
-    DistanceLines = true,
-    SilentAim = true,
+    ESP = false,
+    Skeleton = false,
+    Aimlock = false,
+    BulletFix = false,
+    DistanceLines = false,
+    SilentAim = false,
     AutoReload = false,
     FastEquipSwap = false,
     NoSpread = false,
-    Hitmarker = true,
-    Crosshair = true,
-    SpectatorList = true,
-    PingDisplay = true,
+    Hitmarker = false,
+    Crosshair = false,
+    SpectatorList = false,
+    PingDisplay = false,
 }
 
 local keybinds = {
