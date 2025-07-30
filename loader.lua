@@ -3,7 +3,7 @@ if _G.NoSleepHubLoaded then return end
 _G.NoSleepHubLoaded = true
 
 -- Load Rayfield UI
-local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source"))()
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
