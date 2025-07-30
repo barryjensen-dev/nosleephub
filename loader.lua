@@ -255,8 +255,9 @@ RunService.RenderStepped:Connect(function(dt)
                         -- Distance lines
                         if toggles.DistanceLines and distanceLines[pl] then
                             local line = distanceLines[pl]
-                            local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
-                            if hrp then
+                            local character = pl.Character
+                            local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                            if hrp and hrp.Position then
                                 local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
                                 if onScreen then
                                     line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
@@ -339,35 +340,35 @@ local Window = Rayfield:CreateWindow({
 -- Visuals tab toggles
 local VisualsTab = Window:CreateTab("Visuals")
 
-local espToggleUI = VisualsTab:CreateToggle({
+VisualsTab:CreateToggle({
     Name = "ESP",
     CurrentValue = toggles.ESP,
     Flag = "ESP_Toggle",
     Callback = function(val) toggles.ESP = val end
 })
 
-local skeletonToggleUI = VisualsTab:CreateToggle({
+VisualsTab:CreateToggle({
     Name = "Skeleton",
     CurrentValue = toggles.Skeleton,
     Flag = "Skeleton_Toggle",
     Callback = function(val) toggles.Skeleton = val end
 })
 
-local aimlockToggleUI = VisualsTab:CreateToggle({
+VisualsTab:CreateToggle({
     Name = "Aimlock",
     CurrentValue = toggles.Aimlock,
     Flag = "Aimlock_Toggle",
     Callback = function(val) toggles.Aimlock = val end
 })
 
-local bulletFixToggleUI = VisualsTab:CreateToggle({
+VisualsTab:CreateToggle({
     Name = "Bullet Correction",
     CurrentValue = toggles.BulletFix,
     Flag = "BulletFix_Toggle",
     Callback = function(val) toggles.BulletFix = val end
 })
 
-local distanceLinesToggleUI = VisualsTab:CreateToggle({
+VisualsTab:CreateToggle({
     Name = "Distance Lines",
     CurrentValue = toggles.DistanceLines,
     Flag = "DistanceLines_Toggle",
@@ -377,7 +378,7 @@ local distanceLinesToggleUI = VisualsTab:CreateToggle({
 -- Keybinds tab
 local KeybindsTab = Window:CreateTab("Keybinds")
 
-local espKeybindUI = KeybindsTab:CreateKeybind({
+KeybindsTab:CreateKeybind({
     Name = "Toggle ESP",
     CurrentKeybind = keybinds.ESP,
     Hold = false,
@@ -385,7 +386,7 @@ local espKeybindUI = KeybindsTab:CreateKeybind({
     Callback = function(k) keybinds.ESP = k end
 })
 
-local skeletonKeybindUI = KeybindsTab:CreateKeybind({
+KeybindsTab:CreateKeybind({
     Name = "Toggle Skeleton",
     CurrentKeybind = keybinds.Skeleton,
     Hold = false,
@@ -393,7 +394,7 @@ local skeletonKeybindUI = KeybindsTab:CreateKeybind({
     Callback = function(k) keybinds.Skeleton = k end
 })
 
-local aimlockKeybindUI = KeybindsTab:CreateKeybind({
+KeybindsTab:CreateKeybind({
     Name = "Toggle Aimlock",
     CurrentKeybind = keybinds.Aimlock,
     Hold = false,
@@ -401,7 +402,7 @@ local aimlockKeybindUI = KeybindsTab:CreateKeybind({
     Callback = function(k) keybinds.Aimlock = k end
 })
 
-local bulletFixKeybindUI = KeybindsTab:CreateKeybind({
+KeybindsTab:CreateKeybind({
     Name = "Toggle Bullet Correction",
     CurrentKeybind = keybinds.BulletFix,
     Hold = false,
@@ -409,7 +410,7 @@ local bulletFixKeybindUI = KeybindsTab:CreateKeybind({
     Callback = function(k) keybinds.BulletFix = k end
 })
 
-local distanceLinesKeybindUI = KeybindsTab:CreateKeybind({
+KeybindsTab:CreateKeybind({
     Name = "Toggle Distance Lines",
     CurrentKeybind = keybinds.DistanceLines,
     Hold = false,
@@ -417,7 +418,7 @@ local distanceLinesKeybindUI = KeybindsTab:CreateKeybind({
     Callback = function(k) keybinds.DistanceLines = k end
 })
 
-local toggleUIKeybindUI = KeybindsTab:CreateKeybind({
+KeybindsTab:CreateKeybind({
     Name = "Toggle UI Visibility",
     CurrentKeybind = keybinds.ToggleUI,
     Hold = false,
@@ -436,10 +437,10 @@ UserInput.InputBegan:Connect(function(input, gameProcessed)
                 toggles[name] = not toggles[name]
                 local flagName = name .. "_Toggle"
                 local flag = Rayfield.Flags[flagName]
-                if flag and flag.Set then
+                if flag then
                     flag:Set(toggles[name])
                 else
-                    warn("Flag not found or invalid for: " .. flagName)
+                    warn("Flag not found for: " .. flagName)
                 end
             end
         end
