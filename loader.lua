@@ -255,12 +255,17 @@ RunService.RenderStepped:Connect(function(dt)
                         -- Distance lines
                         if toggles.DistanceLines and distanceLines[pl] then
                             local line = distanceLines[pl]
-                            local screenPos, onScreen = Camera:WorldToViewportPoint(pl.Character.HumanoidRootPart.Position)
-                            if onScreen then
-                                line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-                                line.To = Vector2.new(screenPos.X, screenPos.Y)
-                                line.Color = col
-                                line.Visible = true
+                            local hrp = pl.Character:FindFirstChild("HumanoidRootPart")
+                            if hrp then
+                                local screenPos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                                if onScreen then
+                                    line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+                                    line.To = Vector2.new(screenPos.X, screenPos.Y)
+                                    line.Color = col
+                                    line.Visible = true
+                                else
+                                    line.Visible = false
+                                end
                             else
                                 line.Visible = false
                             end
@@ -431,10 +436,10 @@ UserInput.InputBegan:Connect(function(input, gameProcessed)
                 toggles[name] = not toggles[name]
                 local flagName = name .. "_Toggle"
                 local flag = Rayfield.Flags[flagName]
-                if flag then
+                if flag and flag.Set then
                     flag:Set(toggles[name])
                 else
-                    warn("Flag not found for: " .. flagName)
+                    warn("Flag not found or invalid for: " .. flagName)
                 end
             end
         end
