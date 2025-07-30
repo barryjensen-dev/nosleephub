@@ -2,8 +2,8 @@
 if _G.NoSleepHubLoaded then return end
 _G.NoSleepHubLoaded = true
 
--- Load OrionLib UI
-local OrionLib = loadstring(game:HttpGet(('https://raw.githubusercontent.com/jensonhirst/Orion/main/source')))()
+-- Load Rayfield UI
+local Rayfield = loadstring(game:HttpGet("https://raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/main/source"))()
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -35,7 +35,7 @@ if not isExecutorSupported() then
     return
 end
 
--- Drawing API check
+-- Drawing check
 local DrawingSupported = pcall(function()
     local l = Drawing.new("Line")
     l:Remove()
@@ -45,7 +45,7 @@ if not DrawingSupported then
     return
 end
 
--- Toggles and keybind defaults
+-- State toggles and keybind defaults
 local toggles = {
     ESP = true,
     Skeleton = true,
@@ -61,27 +61,25 @@ local keybinds = {
     ToggleUI = Enum.KeyCode.RightControl
 }
 
--- Drawing holders (weak tables to allow GC)
-local espBoxes = setmetatable({}, {__mode = "k"})
-local skeletons = setmetatable({}, {__mode = "k"})
+local espBoxes = {}
+local skeletons = {}
 
 -- Friend whitelist detection
 local function isWhitelisted(pl)
     return pl:IsFriendsWith(localPlayer.UserId)
 end
 
--- Player color logic
 local function playerColor(pl)
     if isWhitelisted(pl) then
-        return Color3.fromRGB(0, 255, 0) -- Green for friends
+        return Color3.fromRGB(0, 255, 0)
     elseif pl.Team == localPlayer.Team then
-        return Color3.fromRGB(0, 0, 255) -- Blue for teammates
+        return Color3.fromRGB(0, 0, 255)
     else
-        return Color3.fromRGB(255, 0, 0) -- Red for enemies
+        return Color3.fromRGB(255, 0, 0)
     end
 end
 
--- Cleanup drawings helper
+-- Cleanup helper
 local function cleanupDrawing(tbl)
     for _, obj in pairs(tbl) do
         if obj.Visible then obj.Visible = false end
@@ -90,7 +88,7 @@ local function cleanupDrawing(tbl)
     table.clear(tbl)
 end
 
--- Setup ESP box lines
+-- Setup ESP box
 local function setupESP(pl)
     espBoxes[pl] = {}
     for i = 1, 4 do
@@ -102,7 +100,7 @@ local function setupESP(pl)
     end
 end
 
--- Setup skeleton lines
+-- Setup skeleton
 local function setupSkeleton(pl)
     skeletons[pl] = {}
     for i = 1, 14 do
@@ -114,14 +112,12 @@ local function setupSkeleton(pl)
     end
 end
 
--- Setup player visuals if not local or friend
 local function setupCharacter(pl)
     if pl == localPlayer or isWhitelisted(pl) then return end
     setupESP(pl)
     setupSkeleton(pl)
 end
 
--- Update skeleton lines positions
 local function updateSkeleton(pl, character, color)
     local parts = {
         Head = character:FindFirstChild("Head"),
@@ -166,8 +162,13 @@ local function updateSkeleton(pl, character, color)
     end
 end
 
--- Cache closest head for bullet correction
+-- Cached closest head for bullet correction
 local cachedClosestHead = nil
+local function getClosestHead()
+    return cachedClosestHead
+end
+
+-- Update cached closest head once per frame
 RunService.RenderStepped:Connect(function()
     local center = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
     local best, bestDist = nil, math.huge
@@ -193,18 +194,21 @@ end)
 local mt = getrawmetatable(game)
 setreadonly(mt, false)
 local origNamecall = mt.__namecall
-local inNamecall = false
+
+local inNamecall = false -- Prevent recursion
 mt.__namecall = newcclosure(function(self, ...)
     if inNamecall then return origNamecall(self, ...) end
     inNamecall = true
+
     local method = getnamecallmethod()
     local args = {...}
 
     if toggles.BulletFix then
         if method == "Raycast" or method == "FindPartOnRayWithIgnoreList" then
-            local closest = cachedClosestHead
+            local closest = getClosestHead()
             if closest then
                 local origin
+                -- Determine origin robustly
                 if typeof(args[1]) == "Ray" then
                     origin = args[1].Origin
                 elseif typeof(args[1]) == "Vector3" then
@@ -224,7 +228,7 @@ mt.__namecall = newcclosure(function(self, ...)
                 end
             end
         elseif typeof(self) == "Instance" and self:IsA("RemoteEvent") then
-            local closest = cachedClosestHead
+            local closest = getClosestHead()
             if closest then
                 for i, v in ipairs(args) do
                     if typeof(v) == "Vector3" then
@@ -243,7 +247,7 @@ mt.__namecall = newcclosure(function(self, ...)
 end)
 setreadonly(mt, true)
 
--- Throttle rendering to ~30 FPS
+-- Throttle rendering to ~30 FPS for performance
 local lastRender = 0
 RunService.RenderStepped:Connect(function(dt)
     lastRender += dt
@@ -331,133 +335,114 @@ for _, pl in ipairs(Players:GetPlayers()) do
     setupCharacter(pl)
 end
 
--- ======== UI ========
+-- ======= UI with Rayfield =======
 
-local Window = OrionLib:MakeWindow({
+local Window = Rayfield:CreateWindow({
     Name = "NoSleep Hub - ESP & Aim",
-    HidePremium = true,
-    IntroText = "NoSleep Hub v1.0.0",
-    SaveConfig = true,
-    ConfigFolder = "NoSleepHubConfig"
+    LoadingTitle = "NoSleep Hub",
+    LoadingSubtitle = "by You",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "NoSleepHubConfig",
+        FileName = "Config"
+    },
+    Discord = {
+        Enabled = false,
+        Invite = "",
+        RememberJoins = true
+    },
+    KeySystem = false,
 })
 
-local VisualsTab = Window:MakeTab({ Name = "Visuals", Icon = "rbxassetid://4483345998", PremiumOnly = false })
-local KeybindsTab = Window:MakeTab({ Name = "Keybinds", Icon = "rbxassetid://4483345998", PremiumOnly = false })
+local VisualsTab = Window:CreateTab("Visuals")
 
--- Visual toggles
-local espToggle = VisualsTab:AddToggle({
+local espToggleUI = VisualsTab:CreateToggle({
     Name = "ESP",
-    Default = toggles.ESP,
-    Save = true,
+    CurrentValue = toggles.ESP,
     Flag = "ESP_Toggle",
-    Callback = function(value) toggles.ESP = value end
+    Callback = function(value)
+        toggles.ESP = value
+    end
 })
-local skeletonToggle = VisualsTab:AddToggle({
+
+local skeletonToggleUI = VisualsTab:CreateToggle({
     Name = "Skeleton",
-    Default = toggles.Skeleton,
-    Save = true,
+    CurrentValue = toggles.Skeleton,
     Flag = "Skeleton_Toggle",
-    Callback = function(value) toggles.Skeleton = value end
+    Callback = function(value)
+        toggles.Skeleton = value
+    end
 })
-local aimlockToggle = VisualsTab:AddToggle({
+
+local aimlockToggleUI = VisualsTab:CreateToggle({
     Name = "Aimlock",
-    Default = toggles.Aimlock,
-    Save = true,
+    CurrentValue = toggles.Aimlock,
     Flag = "Aimlock_Toggle",
-    Callback = function(value) toggles.Aimlock = value end
+    Callback = function(value)
+        toggles.Aimlock = value
+    end
 })
-local bulletFixToggle = VisualsTab:AddToggle({
+
+local bulletFixToggleUI = VisualsTab:CreateToggle({
     Name = "Bullet Correction",
-    Default = toggles.BulletFix,
-    Save = true,
+    CurrentValue = toggles.BulletFix,
     Flag = "BulletFix_Toggle",
-    Callback = function(value) toggles.BulletFix = value end
+    Callback = function(value)
+        toggles.BulletFix = value
+    end
 })
 
--- Keybind helper function
-local function createKeybind(tab, label, keyName)
-    return tab:AddKeybind({
-        Name = label,
-        Default = keybinds[keyName],
-        Save = true,
-        Flag = keyName .. "_Keybind",
-        Hold = false,
-        Callback = function(key)
-            keybinds[keyName] = key
-            -- Update hint label text dynamically
-            hintLabel.Text = ("Hotkeys: %s=ESP | %s=Skeleton | %s=Aimlock | %s=BulletFix | %s=Toggle UI")
-                :format(
-                    Enum.KeyCode[keybinds.ESP].Name,
-                    Enum.KeyCode[keybinds.Skeleton].Name,
-                    Enum.KeyCode[keybinds.Aimlock].Name,
-                    Enum.KeyCode[keybinds.BulletFix].Name,
-                    Enum.KeyCode[keybinds.ToggleUI].Name
-                )
-        end
-    })
-end
+local KeybindsTab = Window:CreateTab("Keybinds")
 
-local espKeybind = createKeybind(KeybindsTab, "Toggle ESP", "ESP")
-local skeletonKeybind = createKeybind(KeybindsTab, "Toggle Skeleton", "Skeleton")
-local aimlockKeybind = createKeybind(KeybindsTab, "Toggle Aimlock", "Aimlock")
-local bulletFixKeybind = createKeybind(KeybindsTab, "Toggle Bullet Correction", "BulletFix")
-local toggleUIKeybind = createKeybind(KeybindsTab, "Toggle UI Visibility", "ToggleUI")
+local espKeybindUI = KeybindsTab:CreateKeybind({
+    Name = "Toggle ESP",
+    CurrentKeybind = keybinds.ESP,
+    Hold = false,
+    Flag = "ESP_Keybind",
+    Callback = function(key)
+        keybinds.ESP = key
+    end
+})
 
--- Hotkey hints label
-local hintLabel = Instance.new("TextLabel")
-hintLabel.Size = UDim2.new(1, 0, 0, 50)
-hintLabel.Position = UDim2.new(0, 0, 1, -50)
-hintLabel.BackgroundTransparency = 1
-hintLabel.TextColor3 = Color3.new(1, 1, 1)
-hintLabel.TextStrokeTransparency = 0.7
-hintLabel.Font = Enum.Font.SourceSansBold
-hintLabel.TextSize = 14
-hintLabel.Text = ("Hotkeys: %s=ESP | %s=Skeleton | %s=Aimlock | %s=BulletFix | %s=Toggle UI")
-    :format(
-        Enum.KeyCode[keybinds.ESP].Name,
-        Enum.KeyCode[keybinds.Skeleton].Name,
-        Enum.KeyCode[keybinds.Aimlock].Name,
-        Enum.KeyCode[keybinds.BulletFix].Name,
-        Enum.KeyCode[keybinds.ToggleUI].Name
-    )
-hintLabel.Parent = Window.MainFrame
+local skeletonKeybindUI = KeybindsTab:CreateKeybind({
+    Name = "Toggle Skeleton",
+    CurrentKeybind = keybinds.Skeleton,
+    Hold = false,
+    Flag = "Skeleton_Keybind",
+    Callback = function(key)
+        keybinds.Skeleton = key
+    end
+})
 
--- Enable dragging the window
-do
-    local dragging, dragInput, dragStart, startPos
+local aimlockKeybindUI = KeybindsTab:CreateKeybind({
+    Name = "Toggle Aimlock",
+    CurrentKeybind = keybinds.Aimlock,
+    Hold = false,
+    Flag = "Aimlock_Keybind",
+    Callback = function(key)
+        keybinds.Aimlock = key
+    end
+})
 
-    Window.MainFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = Window.MainFrame.Position
+local bulletFixKeybindUI = KeybindsTab:CreateKeybind({
+    Name = "Toggle Bullet Correction",
+    CurrentKeybind = keybinds.BulletFix,
+    Hold = false,
+    Flag = "BulletFix_Keybind",
+    Callback = function(key)
+        keybinds.BulletFix = key
+    end
+})
 
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    Window.MainFrame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            dragInput = input
-        end
-    end)
-
-    UserInput.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            Window.MainFrame.Position = UDim2.new(
-                startPos.X.Scale,
-                startPos.X.Offset + delta.X,
-                startPos.Y.Scale,
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-end
+local toggleUIKeybindUI = KeybindsTab:CreateKeybind({
+    Name = "Toggle UI Visibility",
+    CurrentKeybind = keybinds.ToggleUI,
+    Hold = false,
+    Flag = "ToggleUI_Keybind",
+    Callback = function(key)
+        keybinds.ToggleUI = key
+    end
+})
 
 -- Hotkey input handler
 UserInput.InputBegan:Connect(function(input, gameProcessed)
@@ -469,7 +454,8 @@ UserInput.InputBegan:Connect(function(input, gameProcessed)
                     Window:Toggle()
                 else
                     toggles[name] = not toggles[name]
-                    OrionLib.Flags[name .. "_Toggle"]:Set(toggles[name])
+                    local flag = Rayfield.Flags[name .. "_Toggle"]
+                    if flag then flag:Set(toggles[name]) end
                 end
             end
         end
